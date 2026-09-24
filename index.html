@@ -279,6 +279,16 @@
     }
 
     render();
+
+    // Ouverture via le raccourci "Pointer" (?action=punch) : on pointe direct
+    if (new URLSearchParams(window.location.search).get('action') === 'punch') {
+      addPunch();
+      history.replaceState(null, '', window.location.pathname);
+      const info = document.getElementById('last-punch-info');
+      const original = info.innerHTML;
+      info.innerHTML = '<strong class="text-green-600">✓ Pointage enregistré !</strong>';
+      setTimeout(() => { info.innerHTML = original; }, 2000);
+    }
   </script>
 
 </body>
