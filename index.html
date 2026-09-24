@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Pointage Pro</title>
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Pointage">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .btn-red-shadow {
+      box-shadow: 0 10px 25px -5px rgba(239, 68, 68, 0.5), 0 8px 10px -6px rgba(239, 68, 68, 0.5);
+    }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 font-sans pb-12">
+
+  <header class="bg-slate-900 text-white p-4 shadow-md text-center flex justify-between items-center max-w-md mx-auto rounded-b-xl">
+    <h1 class="text-lg font-bold tracking-wide">Mon Pointage</h1>
+    <button onclick="exportCSV()" class="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-700 flex items-center gap-1 transition">
+      <span>📥</span> Export CSV
+    </button>
+  </header>
+
+  <main class="max-w-md mx-auto p-4 space-y-6">
+
+    <!-- ÉCRAN 1 : BOUTON ROUGE & DERNIER POINTAGE -->
+    <section class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 text-center space-y-4">
+      <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Enregistrer une heure</h2>
+      
+      <div class="py-2">
+        <button id="punch-btn" onclick="addPunch()" class="w-36 h-36 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 transition-all text-white font-black text-lg btn-red-shadow border-4 border-red-400 mx-auto flex flex-col items-center justify-center cursor-pointer select-none">
+          <span>POINTER</span>
+          <span class="text-[10px] font-normal opacity-80 mt-1">Appuyer ici</span>
+        </button>
+      </div>
+
+      <div id="last-punch-info" class="text-sm text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100">
+        Aucun pointage aujourd'hui
+      </div>
+    </section>
+
+    <!-- ÉCRAN 2 : CALENDRIER ET VUE MENSUELLE -->
+    <section class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between mb-2">
+        <button onclick="changeMonth(-1)" class="p-2 text-slate-600 hover:bg-slate-100 rounded-lg text-lg font-bold">←</button>
+        <h3 id="current-month-title" class="font-bold text-slate-800 capitalize">---</h3>
+        <button onclick="changeMonth(1)" class="p-2 text-slate-600 hover:bg-slate-100 rounded-lg text-lg font-bold">→</button>
+      </div>
+
+      <!-- Jours de la semaine -->
+      <div class="grid grid-cols-7 text-center text-xs font-bold text-slate-400 border-b pb-2">
+        <div>Lun</div><div>Mar</div><div>Mer</div><div>Jeu</div><div>Ven</div><div>Sam</div><div>Dim</div>
+      </div>
+
+      <!-- Grille des jours -->
+      <div id="calendar-grid" class="grid grid-cols-7 gap-1 text-center text-sm">
+        <!-- Généré par JS -->
+      </div>
+    </section>
+
+    <!-- ÉCRAN 3 : DÉTAILS ET ÉDITION DU JOUR SÉLECTIONNÉ -->
+    <section id="day-details-section" class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4 hidden">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 id="selected-date-title" class="font-bold text-slate-800 text-sm">Détails du jour</h3>
+        <span id="total-hours-badge" class="bg-blue-100 text-blue-800 font-bold text-xs px-2.5 py-1 rounded-full">0h 00m</span>
+      </div>
+
+      <div id="punches-list" class="space-y-2 max-h-48 overflow-y-auto">
+        <!-- Liste des pointages -->
+      </div>
+
+      <div class="pt-2 border-t flex gap-2">
+        <input type="time" id="manual-time-input" class="border rounded-lg px-3 py-2 text-sm flex-1 border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-500">
+        <button onclick="addManualPunch()" class="bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
+          Ajouter
+        </button>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    let currentDate = new Date();
+    let selectedDateStr = new Date().toISOString().split('T')[0];
+
+    function getPunches() {
+      return JSON.parse(localStorage.getItem('my_punches') || '[]');
+    }
+
+    function savePunches(punches) {
+      localStorage.setItem('my_punches', JSON.stringify(punches));
+      render();
+    }
+
+    function addPunch() {
+      const now = new Date();
+      const punches = getPunches();
+      punches.push(now.toISOString());
+      savePunches(punches);
+      
+      // Animation visuelle d'appui
+      const btn = document.getElementById('punch-btn');
+      btn.classList.add('scale-90');
+      setTimeout(() => btn.classList.remove('scale-90'), 150);
+    }
+
+    function getDayStats(dateStr) {
+      const punches = getPunches()
+        .filter(p => p.startsWith(dateStr))
+        .sort((a, b) => new Date(a) - new Date(b));
+
+      if (punches.length === 0) return { count: 0, durationMs: 0, first: null, last: null, punches: [] };
+
+      const first = new Date(punches[0]);
+      const last = new Date(punches[punches.length - 1]);
+      const durationMs = punches.length > 1 ? last - first : 0;
+
+      return { count: punches.length, durationMs, first, last, punches };
+    }
+
+    function formatDuration(ms) {
+      if (ms <= 0) return '0h 00m';
+      const totalMinutes = Math.floor(ms / (1000 * 60));
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      return `${hours}h ${minutes < 10 ? '0' : ''}${minutes}m`;
+    }
+
+    function changeMonth(delta) {
+      currentDate.setMonth(currentDate.getMonth() + delta);
+      renderCalendar();
+    }
+
+    function renderCalendar() {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+
+      const monthName = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' }).format(currentDate);
+      document.getElementById('current-month-title').innerText = monthName;
+
+      const grid = document.getElementById('calendar-grid');
+      grid.innerHTML = '';
+
+      const firstDayOfMonth = new Date(year, month, 1);
+      const lastDayOfMonth = new Date(year, month + 1, 0);
+
+      let startingDay = firstDayOfMonth.getDay() - 1;
+      if (startingDay === -1) startingDay = 6;
+
+      for (let i = 0; i < startingDay; i++) {
+        grid.appendChild(document.createElement('div'));
+      }
+
+      for (let day = 1; day <= lastDayOfMonth.getDate(); day++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const stats = getDayStats(dateStr);
+
+        const dayCell = document.createElement('button');
+        const isSelected = dateStr === selectedDateStr;
+        dayCell.className = `p-1.5 rounded-xl flex flex-col items-center justify-start min-h-[52px] border transition ${isSelected ? 'border-red-500 bg-red-50/50' : 'border-transparent hover:bg-slate-50'}`;
+        dayCell.onclick = () => selectDate(dateStr);
+
+        let cellContent = `<span class="font-semibold text-xs ${isSelected ? 'text-red-600' : 'text-slate-700'}">${day}</span>`;
+        if (stats.count > 0) {
+          const durationStr = stats.count > 1 ? formatDuration(stats.durationMs) : '1 pt';
+          cellContent += `<span class="text-[9px] bg-red-100 text-red-700 rounded px-1 mt-1 font-bold">${durationStr}</span>`;
+        }
+
+        dayCell.innerHTML = cellContent;
+        grid.appendChild(dayCell);
+      }
+    }
+
+    function selectDate(dateStr) {
+      selectedDateStr = dateStr;
+      renderCalendar();
+      renderDetails();
+    }
+
+    function renderDetails() {
+      const detailsSection = document.getElementById('day-details-section');
+      detailsSection.classList.remove('hidden');
+
+      const formattedDate = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'full' }).format(new Date(selectedDateStr + 'T00:00:00'));
+      document.getElementById('selected-date-title').innerText = formattedDate;
+
+      const stats = getDayStats(selectedDateStr);
+      document.getElementById('total-hours-badge').innerText = formatDuration(stats.durationMs);
+
+      const listContainer = document.getElementById('punches-list');
+      listContainer.innerHTML = '';
+
+      if (stats.count === 0) {
+        listContainer.innerHTML = `<p class="text-xs text-slate-400 py-2 text-center">Aucun pointage à cette date.</p>`;
+        return;
+      }
+
+      stats.punches.forEach((isoString) => {
+        const timeStr = new Date(isoString).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        const item = document.createElement('div');
+        item.className = 'flex justify-between items-center bg-slate-50 p-2.5 rounded-lg border border-slate-100 text-sm';
+        item.innerHTML = `
+          <span>Pointage : <strong class="text-slate-800">${timeStr}</strong></span>
+          <button onclick="deletePunch('${isoString}')" class="text-red-500 hover:text-red-700 text-xs font-semibold px-2 py-1">Supprimer</button>
+        `;
+        listContainer.appendChild(item);
+      });
+    }
+
+    function addManualPunch() {
+      const timeInput = document.getElementById('manual-time-input').value;
+      if (!timeInput) return;
+
+      const [hours, minutes] = timeInput.split(':');
+      const punchDate = new Date(selectedDateStr + 'T00:00:00');
+      punchDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0);
+
+      const punches = getPunches();
+      punches.push(punchDate.toISOString());
+      savePunches(punches);
+      document.getElementById('manual-time-input').value = '';
+    }
+
+    function deletePunch(isoString) {
+      let punches = getPunches();
+      punches = punches.filter(p => p !== isoString);
+      savePunches(punches);
+    }
+
+    function renderHomeInfo() {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const stats = getDayStats(todayStr);
+      const infoDiv = document.getElementById('last-punch-info');
+
+      if (stats.count > 0) {
+        const lastTimeStr = stats.last.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        infoDiv.innerHTML = `Dernier pointage : <strong>${lastTimeStr}</strong> (${stats.count} aujourd'hui)<br><span class="text-xs text-slate-500">Durée calculée : <strong>${formatDuration(stats.durationMs)}</strong></span>`;
+      } else {
+        infoDiv.innerHTML = `Aucun pointage aujourd'hui`;
+      }
+    }
+
+    function exportCSV() {
+      const punches = getPunches();
+      if (punches.length === 0) {
+        alert("Aucun pointage à exporter.");
+        return;
+      }
+
+      let csvContent = "data:text/csv;charset=utf-8,Date,Heure,ISO\n";
+      punches.forEach(p => {
+        const d = new Date(p);
+        const dateStr = d.toLocaleDateString('fr-FR');
+        const timeStr = d.toLocaleTimeString('fr-FR');
+        csvContent += `"${dateStr}","${timeStr}","${p}"\n`;
+      });
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `pointages_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    function render() {
+      renderCalendar();
+      renderHomeInfo();
+      if (!document.getElementById('day-details-section').classList.contains('hidden')) {
+        renderDetails();
+      }
+    }
+
+    render();
+  </script>
+
+</body>
+</html>
